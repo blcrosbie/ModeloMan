@@ -1,0 +1,24 @@
+{
+  "name": "modeloman",
+  "version": "0.1.0",
+  "description": "Control hub for orchestration practices, prompts, skills, and benchmark tracking.",
+  "private": false,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "start:mcp": "node src/mcp-bridge.js",
+    "dev": "node --watch src/server.js",
+    "check": "node --check src/server.js && node --check src/hub-service.js && node --check src/rpc-transport.js && node --check src/rpc-client.js && node --check src/mcp-bridge.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.13.4",
+    "@grpc/proto-loader": "^0.8.0",
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "zod": "^3.24.2",
+    "express": "^4.21.2"
+  }
+}

@@ -1,0 +1,169 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f6f2;
+  --panel: #ffffff;
+  --text: #202020;
+  --muted: #68685e;
+  --line: #d9d9cc;
+  --accent: #0b7856;
+  --danger: #a5382b;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 0 0, #ffffff, transparent 45%),
+    radial-gradient(circle at 100% 0, #ddebe6, transparent 35%),
+    var(--bg);
+}
+
+.hero {
+  padding: 2.5rem 1.5rem 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.hero p {
+  margin: 0.5rem 0 0;
+  max-width: 65ch;
+  color: var(--muted);
+}
+
+.pill {
+  margin-top: 1rem;
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+.layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.04);
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.stack {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.45rem;
+}
+
+input,
+textarea,
+select,
+button {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(0.96);
+}
+
+button.danger {
+  width: auto;
+  background: transparent;
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger), transparent 60%);
+  margin-left: 0.5rem;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.summary-tile {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  background: #fcfcfa;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.summary-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  max-height: 17rem;
+  overflow: auto;
+}
+
+.list-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: #fcfcfa;
+}
+
+.item-main {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 680px) {
+  .hero,
+  .layout {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}

@@ -201,6 +201,16 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ModeloMan runtime data
+data/modeloman-db.json
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

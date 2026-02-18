@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package modeloman.v1;
+
+service ModelomanTransport {
+  rpc Health (Empty) returns (HealthResponse);
+  rpc Summary (Empty) returns (JsonResponse);
+  rpc ExportState (Empty) returns (JsonResponse);
+  rpc ListCollection (CollectionRequest) returns (JsonArrayResponse);
+  rpc CreateCollectionItem (CreateItemRequest) returns (JsonResponse);
+  rpc UpdateTask (UpdateTaskRequest) returns (JsonResponse);
+  rpc DeleteCollectionItem (DeleteItemRequest) returns (AckResponse);
+}
+
+message Empty {}
+
+message CollectionRequest {
+  string collection = 1;
+}
+
+message CreateItemRequest {
+  string collection = 1;
+  string json_payload = 2;
+}
+
+message UpdateTaskRequest {
+  string id = 1;
+  string json_payload = 2;
+}
+
+message DeleteItemRequest {
+  string collection = 1;
+  string id = 2;
+}
+
+message HealthResponse {
+  string status = 1;
+  string data_file = 2;
+  string now = 3;
+}
+
+message JsonResponse {
+  string json_payload = 1;
+}
+
+message JsonArrayResponse {
+  repeated string json_items = 1;
+}
+
+message AckResponse {
+  bool ok = 1;
+}

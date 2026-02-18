@@ -1,0 +1,14 @@
+services:
+  modeloman:
+    build: .
+    container_name: modeloman
+    environment:
+      PORT: 3000
+      RPC_PORT: 50051
+      DATA_FILE: /app/data/modeloman-db.json
+    ports:
+      - "3000:3000"
+      - "50051:50051"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
