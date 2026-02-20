@@ -1,5 +1,6 @@
 .git
-node_modules
-npm-debug.log
-README.md
-data/modeloman-db.json
+bin
+dist
+data
+*.out
+coverage.txt

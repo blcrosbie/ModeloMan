@@ -1,18 +1,22 @@
-FROM node:20-alpine
+FROM golang:1.25-alpine AS build
 
-WORKDIR /app
+WORKDIR /src
 
-COPY package*.json ./
-RUN npm install --omit=dev
+COPY go.mod ./
+RUN go mod download
 
 COPY . .
-RUN mkdir -p /app/data
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/modeloman-server ./cmd/modeloman-server
 
-ENV PORT=3000
-ENV RPC_PORT=50051
-ENV DATA_FILE=/app/data/modeloman-db.json
+FROM gcr.io/distroless/static-debian12
 
-EXPOSE 3000
+WORKDIR /
+COPY --from=build /out/modeloman-server /modeloman-server
+
+ENV GRPC_ADDR=:50051
+ENV DATA_FILE=/data/modeloman.db.json
+
+VOLUME ["/data"]
 EXPOSE 50051
 
-CMD ["npm", "start"]
+ENTRYPOINT ["/modeloman-server"]

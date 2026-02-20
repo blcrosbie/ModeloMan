@@ -1,99 +1,94 @@
 # ModeloMan
 
-Barebones orchestration control hub for:
-- Prompting best practices
-- Skill building/review
-- Task + note tracking
-- Changelog capture
-- Model benchmark/cost logging
+Go-first, gRPC-only orchestration control hub for:
+- agent/subagent coordination metadata
+- changelog and operations journaling
+- benchmark telemetry (tokens, cost, latency, provider mix)
+- documentation-driven protobuf contracts
 
-This repo is intentionally lightweight so it can evolve into:
-- A public showcase repo
-- A CLI/agent-connected control plane
-- A deploy-anywhere Docker service (local + server)
+This repo intentionally avoids Node/npm and REST.
 
-## V2 Included (RPC + MCP Upgrade)
-- Shared hub logic in `src/hub-service.js` (single source of truth)
-- Internal gRPC transport for subagent communication:
-  - schema: `proto/modeloman.proto`
-  - server: `src/rpc-transport.js`
-  - client helper: `src/rpc-client.js`
-- MCP bridge server for LLM tool exposure:
-  - `src/mcp-bridge.js`
-- REST API kept for UI/public compatibility
-- Ingestion endpoint for orchestrators (`n8n`, `LiteLLM`):
-  - `POST /api/ingest/events`
-- JSON data persistence mounted at `./data/modeloman-db.json`
-- Dockerfile + docker-compose for portable deployment
+## Stack
+- Language: Go (`go1.25+`)
+- Transport: gRPC (`google.golang.org/grpc`)
+- Serialization: Protobuf (`Struct`/`ListValue` contract phase)
+- Persistence: local JSON state store (`data/modeloman.db.json`)
+- Runtime: single binary (`cmd/modeloman-server`)
 
-## Quick Start (Local)
-1. Install Node 20+
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run:
-   ```bash
-   npm start
-   ```
-4. Open `http://localhost:3000`
+## Project Layout
+- `cmd/modeloman-server`: production server entrypoint
+- `cmd/modeloman-cli`: local integration CLI (gRPC client)
+- `internal/service`: business logic, validation, domain workflows
+- `internal/store`: atomic JSON persistence layer
+- `internal/transport/grpc`: server registration + interceptors
+- `internal/rpccontract`: canonical full RPC method names
+- `proto/modeloman/v1/hub.proto`: protobuf contract
+- `docs/`: architecture, protobuf payload schemas, error handling, integration ops
+- `CHANGELOG.md`: human-facing change ledger
 
-Optional MCP bridge (run in a separate terminal):
+## Quick Start
+1. Start server:
 ```bash
-npm run start:mcp
+go run ./cmd/modeloman-server
+```
+2. Run sample calls:
+```bash
+go run ./cmd/modeloman-cli summary
+go run ./cmd/modeloman-cli create-task --title "Set provider routing policy"
+go run ./cmd/modeloman-cli list-tasks
 ```
 
-Example MCP client config is in `mcp/modeloman.mcp.json`.
+## Environment Variables
+- `GRPC_ADDR` (default `:50051`)
+- `DATA_FILE` (default `./data/modeloman.db.json`)
+- `AUTH_TOKEN` (optional; if set, write RPCs require token metadata)
 
-## Quick Start (Docker)
+## Auth Model
+If `AUTH_TOKEN` is set:
+- write methods require either:
+  - metadata `x-modeloman-token: <token>`
+  - or `authorization: Bearer <token>`
+- read methods remain unauthenticated
+
+## RPC Surface
+Service: `modeloman.v1.ModeloManHub`
+
+Read:
+- `GetHealth`
+- `GetSummary`
+- `ExportState`
+- `ListTasks`
+- `ListNotes`
+- `ListChangelog`
+- `ListBenchmarks`
+
+Write:
+- `CreateTask`
+- `UpdateTask`
+- `DeleteTask`
+- `CreateNote`
+- `AppendChangelog`
+- `RecordBenchmark`
+
+## Error Handling
+- Domain errors are normalized to gRPC status codes in unary interceptor.
+- Panic recovery interceptor converts panics to `Internal`.
+- Logs include method, latency, and final gRPC status code.
+
+See `docs/error-handling.md`.
+
+## Documentation Map
+- `docs/architecture.md`
+- `docs/protobuf-contract.md`
+- `docs/error-handling.md`
+- `docs/integration-management.md`
+- `docs/changelog-policy.md`
+- `docs/protobuf-tooling.md`
+- `docs/grpcurl-cookbook.md`
+
+## Docker
 ```bash
 docker compose up --build
 ```
 
-Then open `http://localhost:3000`.
-
-## API Surface
-- `GET /api/health`
-- `GET /api/summary`
-- `GET /api/export`
-- `POST /api/ingest/events`
-- `GET|POST /api/tasks`
-- `PATCH|DELETE /api/tasks/:id`
-- `GET|POST /api/notes`
-- `DELETE /api/notes/:id`
-- `GET|POST /api/changelog`
-- `DELETE /api/changelog/:id`
-- `GET|POST /api/benchmarks`
-- `DELETE /api/benchmarks/:id`
-
-## Data Model (high level)
-- `tasks`: execution-oriented work items with status and labels
-- `notes`: freeform learnings, findings, and references
-- `changelog`: meaningful updates and operational decisions
-- `benchmarks`: task-level model usage snapshots
-  - provider type: `api`, `subscription`, `opensource`
-  - token in/out, cost, latency, model/provider metadata
-
-## Environment Variables
-- `PORT` (default: `3000`)
-- `RPC_PORT` (default: `50051`)
-- `RPC_TARGET` (for MCP/client, default: `127.0.0.1:50051`)
-- `DATA_FILE` (default: `./data/modeloman-db.json`)
-- `INGEST_KEY` (optional, recommended for orchestrator ingestion)
-
-## RPC Surface (Internal)
-- `Health`
-- `Summary`
-- `ExportState`
-- `ListCollection`
-- `CreateCollectionItem`
-- `UpdateTask`
-- `DeleteCollectionItem`
-
-See `docs/rpc-implementation-map.md` for the full architecture map and rollout.
-
-## Suggested Next Steps
-1. Move persistent storage to PostgreSQL for concurrent multi-agent writes.
-2. Add TLS and service auth for gRPC transport in production.
-3. Add LiteLLM routing policy snapshots into `changelog`.
-4. Add n8n workflows for RSS/HF/GitHub signal ingestion.
+The service listens on gRPC port `50051`.
