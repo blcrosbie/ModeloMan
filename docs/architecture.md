@@ -13,8 +13,8 @@ ModeloMan acts as a control-plane backend for AI orchestration strategy, benchma
 ## Runtime Components
 1. `cmd/modeloman-server`
 - boots config
-- loads file-backed state
-- exposes gRPC service
+- loads pluggable state store
+- exposes gRPC service + optional read-only HTTP leaderboard/dashboard
 - registers health + reflection
 - handles graceful shutdown
 
@@ -24,20 +24,24 @@ ModeloMan acts as a control-plane backend for AI orchestration strategy, benchma
 - summary aggregations for budget analytics
 
 3. `internal/store`
-- in-process mutex protection
-- atomic file persistence (`.tmp` + rename)
-- durable JSON state
+- pluggable persistence adapters (`STORE_DRIVER`)
+- PostgreSQL canonical store for tasks/notes/changelog
+- TimescaleDB hypertable for benchmark time-series telemetry
+- file-store fallback for local bootstrap
 
 4. `internal/transport/grpc`
 - manual service registration
 - unary interceptors:
   - panic recovery
-  - auth guard for write RPCs
+  - auth guard for write RPCs (per-agent API keys + optional legacy shared token)
   - logging
   - domain-error mapping
 
+5. `internal/transport/http`
+- read-only dashboard + leaderboard view for marketing/demo
+- JSON endpoints for leaderboard and telemetry summary
+
 ## Evolution Path
-1. Replace file store with PostgreSQL.
-2. Move Struct payloads to typed protobuf messages.
-3. Add mTLS and per-client auth scopes.
-4. Add stream RPCs for live orchestration telemetry.
+1. Move Struct payloads to typed protobuf messages.
+2. Add mTLS and per-client auth scopes.
+3. Add stream RPCs for live orchestration telemetry.

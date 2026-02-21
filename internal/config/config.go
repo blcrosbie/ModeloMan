@@ -5,16 +5,26 @@ import (
 )
 
 type Config struct {
-	GRPCAddr  string
-	DataFile  string
-	AuthToken string
+	GRPCAddr          string
+	HTTPAddr          string
+	StoreDriver       string
+	DataFile          string
+	DatabaseURL       string
+	AuthToken         string
+	BootstrapAgentID  string
+	BootstrapAgentKey string
 }
 
 func Load() Config {
 	return Config{
-		GRPCAddr:  envOrDefault("GRPC_ADDR", ":50051"),
-		DataFile:  envOrDefault("DATA_FILE", "./data/modeloman.db.json"),
-		AuthToken: os.Getenv("AUTH_TOKEN"),
+		GRPCAddr:          envOrDefault("GRPC_ADDR", ":50051"),
+		HTTPAddr:          envOrDefault("HTTP_ADDR", ":8080"),
+		StoreDriver:       envOrDefault("STORE_DRIVER", "file"),
+		DataFile:          envOrDefault("DATA_FILE", "./data/modeloman.db.json"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		AuthToken:         os.Getenv("AUTH_TOKEN"),
+		BootstrapAgentID:  envOrDefault("BOOTSTRAP_AGENT_ID", "orchestrator"),
+		BootstrapAgentKey: os.Getenv("BOOTSTRAP_AGENT_KEY"),
 	}
 }
 

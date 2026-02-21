@@ -25,6 +25,15 @@ Use orchestration middleware to:
 1. choose provider/model policy
 2. execute completion
 3. emit benchmark writes to ModeloMan through `RecordBenchmark`
+4. track execution lifecycle with:
+   - `StartRun` (once per orchestration run)
+   - `RecordPromptAttempt` (once per model attempt/retry)
+   - `RecordRunEvent` (state transitions/errors/tool signals)
+   - `FinishRun` (terminal state + aggregate finalize)
+5. enforce central guardrails by reading/updating policy:
+   - `GetPolicy`
+   - `SetPolicy` (kill switch + budget ceilings)
+   - `UpsertPolicyCap` for provider/model-specific overrides
 
 Recommended payload fields:
 - `workflow`
@@ -43,11 +52,14 @@ Example pipelines:
 1. RSS + model-drop scanner -> `CreateNote`
 2. policy decision workflow -> `AppendChangelog`
 3. periodic budget report -> `GetSummary` + alerting
+4. retry/failure trend report -> `GetTelemetrySummary` + `ListPromptAttempts`
+5. prompt ranking report -> `GetLeaderboard`
 
 ## gRPC CLI Reference
 Local helper client:
 - `go run ./cmd/modeloman-cli health`
 - `go run ./cmd/modeloman-cli summary`
+- `go run ./cmd/modeloman-cli telemetry-summary`
 - `go run ./cmd/modeloman-cli create-task --title "..."`
 
 For third-party clients, use reflection-enabled tools like `grpcurl`.

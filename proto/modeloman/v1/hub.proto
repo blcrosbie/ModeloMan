@@ -52,4 +52,46 @@ service ModeloManHub {
 
   // List benchmarks sorted by created_at descending.
   rpc ListBenchmarks(google.protobuf.Empty) returns (google.protobuf.ListValue);
+
+  // Start a tracked orchestrator run.
+  rpc StartRun(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // Mark a run completed/failed/cancelled and finalize aggregates.
+  rpc FinishRun(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List tracked runs sorted by started_at descending (supports optional filters).
+  rpc ListRuns(google.protobuf.Struct) returns (google.protobuf.ListValue);
+
+  // Record one prompt/model attempt inside a run.
+  rpc RecordPromptAttempt(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List prompt attempts (optional run_id filter in request struct).
+  rpc ListPromptAttempts(google.protobuf.Struct) returns (google.protobuf.ListValue);
+
+  // Record arbitrary run lifecycle event (step transitions, warnings, errors).
+  rpc RecordRunEvent(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List run events (optional run_id filter in request struct).
+  rpc ListRunEvents(google.protobuf.Struct) returns (google.protobuf.ListValue);
+
+  // Aggregate telemetry summary across runs/attempts/events.
+  rpc GetTelemetrySummary(google.protobuf.Empty) returns (google.protobuf.Struct);
+
+  // Read active orchestration policy (budget guard + kill switch).
+  rpc GetPolicy(google.protobuf.Empty) returns (google.protobuf.Struct);
+
+  // Update active orchestration policy.
+  rpc SetPolicy(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // Prompt leaderboard across attempts.
+  rpc GetLeaderboard(google.protobuf.Struct) returns (google.protobuf.ListValue);
+
+  // List all active/inactive provider/model cap rules.
+  rpc ListPolicyCaps(google.protobuf.Empty) returns (google.protobuf.ListValue);
+
+  // Create or update a provider/model cap rule.
+  rpc UpsertPolicyCap(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // Delete a provider/model cap rule by id.
+  rpc DeletePolicyCap(google.protobuf.Struct) returns (google.protobuf.Struct);
 }
