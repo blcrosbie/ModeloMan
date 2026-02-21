@@ -6,8 +6,6 @@ Go-first, gRPC-only orchestration control hub for:
 - benchmark telemetry (tokens, cost, latency, provider mix)
 - documentation-driven protobuf contracts
 
-This repo intentionally avoids Node/npm and REST.
-
 ## Stack
 - Language: Go (`go1.25+`)
 - Transport: gRPC (`google.golang.org/grpc`)
