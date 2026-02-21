@@ -30,8 +30,8 @@ services:
       BOOTSTRAP_AGENT_KEY: ${BOOTSTRAP_AGENT_KEY:?BOOTSTRAP_AGENT_KEY must be set}
       AUTH_TOKEN: ${AUTH_TOKEN:-}
     ports:
-      - "50051:50051"
-      - "8080:8080"
+      - "127.0.0.1:50051:50051"
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
 
 volumes:
