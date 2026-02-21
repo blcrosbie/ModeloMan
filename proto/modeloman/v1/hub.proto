@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package modeloman.v1;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+// ModeloManHub is the canonical RPC surface for orchestration-state management.
+//
+// Notes:
+// - This contract intentionally uses google.protobuf.Struct/ListValue for bring-up speed
+//   while still staying fully gRPC/protobuf-native.
+// - Request/response JSON shapes are documented in docs/protobuf-contract.md.
+// - Once protoc/buf are available in your environment, you can migrate these Struct-based
+//   payloads to typed messages incrementally without changing transport semantics.
+service ModeloManHub {
+  // Liveness + service metadata.
+  rpc GetHealth(google.protobuf.Empty) returns (google.protobuf.Struct);
+
+  // Aggregate counters and economic totals (tokens/cost/provider split).
+  rpc GetSummary(google.protobuf.Empty) returns (google.protobuf.Struct);
+
+  // Full persisted state export.
+  rpc ExportState(google.protobuf.Empty) returns (google.protobuf.Struct);
+
+  // Create a task.
+  rpc CreateTask(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // Update task fields.
+  rpc UpdateTask(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // Delete task by id.
+  rpc DeleteTask(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List all tasks sorted by updated_at descending.
+  rpc ListTasks(google.protobuf.Empty) returns (google.protobuf.ListValue);
+
+  // Create a note.
+  rpc CreateNote(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List all notes sorted by created_at descending.
+  rpc ListNotes(google.protobuf.Empty) returns (google.protobuf.ListValue);
+
+  // Append a changelog entry.
+  rpc AppendChangelog(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List changelog entries sorted by created_at descending.
+  rpc ListChangelog(google.protobuf.Empty) returns (google.protobuf.ListValue);
+
+  // Record benchmark telemetry for model/provider usage.
+  rpc RecordBenchmark(google.protobuf.Struct) returns (google.protobuf.Struct);
+
+  // List benchmarks sorted by created_at descending.
+  rpc ListBenchmarks(google.protobuf.Empty) returns (google.protobuf.ListValue);
+}
