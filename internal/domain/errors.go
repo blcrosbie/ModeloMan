@@ -5,11 +5,13 @@ import "fmt"
 type ErrorCode string
 
 const (
-	CodeInvalidArgument ErrorCode = "invalid_argument"
-	CodeNotFound        ErrorCode = "not_found"
-	CodeConflict        ErrorCode = "conflict"
-	CodeUnauthenticated ErrorCode = "unauthenticated"
-	CodeInternal        ErrorCode = "internal"
+	CodeInvalidArgument    ErrorCode = "invalid_argument"
+	CodeNotFound           ErrorCode = "not_found"
+	CodeConflict           ErrorCode = "conflict"
+	CodeUnauthenticated    ErrorCode = "unauthenticated"
+	CodeFailedPrecondition ErrorCode = "failed_precondition"
+	CodeResourceExhausted  ErrorCode = "resource_exhausted"
+	CodeInternal           ErrorCode = "internal"
 )
 
 type AppError struct {
@@ -43,6 +45,14 @@ func Conflict(message string) *AppError {
 
 func Unauthenticated(message string) *AppError {
 	return &AppError{Code: CodeUnauthenticated, Message: message}
+}
+
+func FailedPrecondition(message string) *AppError {
+	return &AppError{Code: CodeFailedPrecondition, Message: message}
+}
+
+func ResourceExhausted(message string) *AppError {
+	return &AppError{Code: CodeResourceExhausted, Message: message}
 }
 
 func Internal(message string, cause error) *AppError {

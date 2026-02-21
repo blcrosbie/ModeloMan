@@ -10,6 +10,7 @@ import (
 
 	"github.com/bcrosbie/modeloman/internal/domain"
 	"github.com/bcrosbie/modeloman/internal/rpccontract"
+	"github.com/bcrosbie/modeloman/internal/store"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -33,25 +34,44 @@ func RecoveryUnaryInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-func AuthUnaryInterceptor(token string) grpc.UnaryServerInterceptor {
+func AuthUnaryInterceptor(token string, keyAuth store.AgentKeyAuthenticator) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
 		req any,
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (any, error) {
-		if token == "" {
-			return handler(ctx, req)
-		}
 		if _, isWriteMethod := rpccontract.WriteMethods[info.FullMethod]; !isWriteMethod {
 			return handler(ctx, req)
 		}
 
-		requestToken := extractToken(ctx)
-		if requestToken != token {
-			return nil, status.Error(codes.Unauthenticated, "invalid authentication token")
+		authEnabled := strings.TrimSpace(token) != "" || keyAuth != nil
+		if !authEnabled {
+			return handler(ctx, req)
 		}
-		return handler(ctx, req)
+
+		requestToken := extractToken(ctx)
+		if requestToken == "" {
+			return nil, status.Error(codes.Unauthenticated, "missing authentication token")
+		}
+
+		if keyAuth != nil {
+			principal, ok, err := keyAuth.AuthenticateAgentKey(requestToken)
+			if err != nil {
+				log.Printf("auth validation failure method=%s err=%v", info.FullMethod, err)
+				return nil, status.Error(codes.Internal, "authentication subsystem unavailable")
+			}
+			if ok {
+				log.Printf("authenticated write method=%s agent_id=%s key_id=%s", info.FullMethod, principal.AgentID, principal.KeyID)
+				return handler(ctx, req)
+			}
+		}
+
+		if token != "" && requestToken == token {
+			return handler(ctx, req)
+		}
+
+		return nil, status.Error(codes.Unauthenticated, "invalid authentication token")
 	}
 }
 
@@ -101,6 +121,10 @@ func mapError(err error) error {
 			return status.Error(codes.AlreadyExists, appError.Message)
 		case domain.CodeUnauthenticated:
 			return status.Error(codes.Unauthenticated, appError.Message)
+		case domain.CodeFailedPrecondition:
+			return status.Error(codes.FailedPrecondition, appError.Message)
+		case domain.CodeResourceExhausted:
+			return status.Error(codes.ResourceExhausted, appError.Message)
 		default:
 			return status.Error(codes.Internal, appError.Message)
 		}
