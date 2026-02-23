@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -16,6 +17,14 @@ type PostgresStore struct {
 	db *sql.DB
 }
 
+const (
+	defaultDBMaxOpenConns    = 25
+	defaultDBMaxIdleConns    = 10
+	defaultDBConnMaxLifetime = 30 * time.Minute
+	defaultDBConnMaxIdleTime = 5 * time.Minute
+	defaultDBPingTimeout     = 5 * time.Second
+)
+
 func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return nil, domain.InvalidArgument("DATABASE_URL is required when STORE_DRIVER=postgres")
@@ -25,15 +34,21 @@ func NewPostgresStore(dsn string) (*PostgresStore, error) {
 	if err != nil {
 		return nil, domain.Internal("failed to open postgres connection", err)
 	}
+	db.SetMaxOpenConns(defaultDBMaxOpenConns)
+	db.SetMaxIdleConns(defaultDBMaxIdleConns)
+	db.SetConnMaxLifetime(defaultDBConnMaxLifetime)
+	db.SetConnMaxIdleTime(defaultDBConnMaxIdleTime)
 
 	return &PostgresStore{db: db}, nil
 }
 
 func (s *PostgresStore) Load() error {
-	if err := s.db.Ping(); err != nil {
+	pingCtx, cancel := context.WithTimeout(context.Background(), defaultDBPingTimeout)
+	defer cancel()
+	if err := s.db.PingContext(pingCtx); err != nil {
 		return domain.Internal("failed to connect to postgres", err)
 	}
-	return s.ensureSchema()
+	return s.verifySchemaReady()
 }
 
 func (s *PostgresStore) Close() error {
@@ -41,6 +56,48 @@ func (s *PostgresStore) Close() error {
 		return nil
 	}
 	return s.db.Close()
+}
+
+func (s *PostgresStore) verifySchemaReady() error {
+	requiredTables := []string{
+		"tasks",
+		"notes",
+		"changelog",
+		"benchmarks",
+		"agent_runs",
+		"prompt_attempts",
+		"run_events",
+		"agent_api_keys",
+		"idempotency_keys",
+		"orchestration_policy",
+		"policy_caps",
+	}
+
+	for _, tableName := range requiredTables {
+		var exists bool
+		if err := s.db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, "public."+tableName).Scan(&exists); err != nil {
+			return domain.Internal("failed to verify database schema", err)
+		}
+		if !exists {
+			return domain.FailedPrecondition(fmt.Sprintf("required table %q is missing; run database migrations before starting modeloman", tableName))
+		}
+	}
+
+	var hasTimescaleExtension bool
+	if err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_extension
+			WHERE extname = 'timescaledb'
+		)
+	`).Scan(&hasTimescaleExtension); err != nil {
+		return domain.Internal("failed to verify timescaledb extension", err)
+	}
+	if !hasTimescaleExtension {
+		return domain.FailedPrecondition("timescaledb extension is not installed; run database migrations before starting modeloman")
+	}
+
+	return nil
 }
 
 func (s *PostgresStore) ExportState() (domain.State, error) {
@@ -825,7 +882,7 @@ func (s *PostgresStore) AuthenticateAgentKey(rawKey string) (AgentPrincipal, boo
 	}
 
 	row := s.db.QueryRow(`
-		SELECT agent_id, key_id
+		SELECT agent_id, key_id, scopes
 		FROM agent_api_keys
 		WHERE key_hash = $1
 		  AND is_active = TRUE
@@ -834,7 +891,7 @@ func (s *PostgresStore) AuthenticateAgentKey(rawKey string) (AgentPrincipal, boo
 	`, hash)
 
 	var principal AgentPrincipal
-	if err := row.Scan(&principal.AgentID, &principal.KeyID); err != nil {
+	if err := row.Scan(&principal.AgentID, &principal.KeyID, &principal.Scopes); err != nil {
 		if err == sql.ErrNoRows {
 			return AgentPrincipal{}, false, nil
 		}
@@ -877,6 +934,105 @@ func (s *PostgresStore) EnsureAgentKey(agentID, rawKey string) (string, bool, er
 		return "", false, domain.Internal("failed to insert api key", err)
 	}
 	return keyID, true, nil
+}
+
+func (s *PostgresStore) ReserveIdempotencyKey(method, idempotencyKey, requestHash string) (IdempotencyRecord, bool, error) {
+	method = strings.TrimSpace(method)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	requestHash = strings.TrimSpace(requestHash)
+	if method == "" || idempotencyKey == "" || requestHash == "" {
+		return IdempotencyRecord{}, false, domain.InvalidArgument("method, idempotency_key, and request_hash are required")
+	}
+
+	result, err := s.db.Exec(`
+		INSERT INTO idempotency_keys (method, idempotency_key, request_hash, response_json, created_at, completed_at)
+		VALUES ($1, $2, $3, '', NOW(), NULL)
+		ON CONFLICT (method, idempotency_key) DO NOTHING
+	`, method, idempotencyKey, requestHash)
+	if err != nil {
+		return IdempotencyRecord{}, false, domain.Internal("failed to reserve idempotency key", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return IdempotencyRecord{}, false, domain.Internal("failed to read idempotency key reserve result", err)
+	}
+	if affected > 0 {
+		return IdempotencyRecord{}, true, nil
+	}
+
+	var record IdempotencyRecord
+	if err := s.db.QueryRow(`
+		SELECT request_hash, response_json, completed_at IS NOT NULL
+		FROM idempotency_keys
+		WHERE method = $1 AND idempotency_key = $2
+	`, method, idempotencyKey).Scan(&record.RequestHash, &record.ResponseJSON, &record.Completed); err != nil {
+		if err == sql.ErrNoRows {
+			return IdempotencyRecord{}, false, domain.NotFound("idempotency key was not found after reserve conflict")
+		}
+		return IdempotencyRecord{}, false, domain.Internal("failed to read existing idempotency key", err)
+	}
+	return record, false, nil
+}
+
+func (s *PostgresStore) CompleteIdempotencyKey(method, idempotencyKey, responseJSON string) error {
+	method = strings.TrimSpace(method)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if method == "" || idempotencyKey == "" {
+		return domain.InvalidArgument("method and idempotency_key are required")
+	}
+
+	result, err := s.db.Exec(`
+		UPDATE idempotency_keys
+		SET response_json = $3,
+		    completed_at = NOW()
+		WHERE method = $1
+		  AND idempotency_key = $2
+		  AND completed_at IS NULL
+	`, method, idempotencyKey, responseJSON)
+	if err != nil {
+		return domain.Internal("failed to complete idempotency key", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return domain.Internal("failed to read idempotency completion result", err)
+	}
+	if affected > 0 {
+		return nil
+	}
+
+	var completed bool
+	if err := s.db.QueryRow(`
+		SELECT completed_at IS NOT NULL
+		FROM idempotency_keys
+		WHERE method = $1 AND idempotency_key = $2
+	`, method, idempotencyKey).Scan(&completed); err != nil {
+		if err == sql.ErrNoRows {
+			return domain.NotFound("idempotency key not found")
+		}
+		return domain.Internal("failed to verify idempotency completion", err)
+	}
+	if completed {
+		return nil
+	}
+	return domain.Internal("idempotency key completion did not apply", nil)
+}
+
+func (s *PostgresStore) ReleaseIdempotencyKey(method, idempotencyKey string) error {
+	method = strings.TrimSpace(method)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if method == "" || idempotencyKey == "" {
+		return nil
+	}
+
+	if _, err := s.db.Exec(`
+		DELETE FROM idempotency_keys
+		WHERE method = $1
+		  AND idempotency_key = $2
+		  AND completed_at IS NULL
+	`, method, idempotencyKey); err != nil {
+		return domain.Internal("failed to release idempotency key", err)
+	}
+	return nil
 }
 
 func (s *PostgresStore) ensureSchema() error {
@@ -977,11 +1133,22 @@ func (s *PostgresStore) ensureSchema() error {
 			agent_id TEXT NOT NULL,
 			key_id TEXT PRIMARY KEY,
 			key_hash TEXT NOT NULL UNIQUE,
+			scopes TEXT[] NOT NULL DEFAULT ARRAY['tasks:write', 'telemetry:write', 'policy:write', 'admin:read']::TEXT[],
 			is_active BOOLEAN NOT NULL DEFAULT TRUE,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			last_used_at TIMESTAMPTZ NULL,
 			expires_at TIMESTAMPTZ NULL,
 			revoked_at TIMESTAMPTZ NULL
+		)`,
+		`ALTER TABLE agent_api_keys ADD COLUMN IF NOT EXISTS scopes TEXT[] NOT NULL DEFAULT ARRAY['tasks:write', 'telemetry:write', 'policy:write', 'admin:read']::TEXT[]`,
+		`CREATE TABLE IF NOT EXISTS idempotency_keys (
+			method TEXT NOT NULL,
+			idempotency_key TEXT NOT NULL,
+			request_hash TEXT NOT NULL,
+			response_json TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			completed_at TIMESTAMPTZ NULL,
+			PRIMARY KEY (method, idempotency_key)
 		)`,
 		`CREATE TABLE IF NOT EXISTS orchestration_policy (
 			policy_id SMALLINT PRIMARY KEY,
@@ -1030,6 +1197,7 @@ func (s *PostgresStore) ensureSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_run_events_run_created_at ON run_events (run_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_agent_api_keys_agent_id ON agent_api_keys (agent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_agent_api_keys_active ON agent_api_keys (is_active, revoked_at, expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at ON idempotency_keys (created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_policy_caps_lookup ON policy_caps (provider_type, provider, model, is_active, priority DESC)`,
 	}
 
