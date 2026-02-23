@@ -1,0 +1,34 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Public marketing/leaderboard surface.
+modeloman.com {
+	tls {
+		protocols tls1.2 tls1.3
+	}
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Reject plaintext HTTP on the control-plane hostname.
+http://grpc.modeloman.com {
+	respond "not found" 404
+}
+
+# Restricted gRPC control-plane.
+grpc.modeloman.com {
+	tls {
+		protocols tls1.2 tls1.3
+		alpn h2
+	}
+
+	@grpc protocol grpc
+	handle @grpc {
+		reverse_proxy 127.0.0.1:50051
+	}
+
+	# Reject non-gRPC traffic on the gRPC vhost.
+	handle {
+		respond "not found" 404
+	}
+}

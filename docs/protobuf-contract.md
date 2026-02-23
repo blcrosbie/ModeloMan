@@ -11,6 +11,18 @@ This is a transitional contract strategy. Once `buf/protoc` is available, replac
 
 ## Payload Schemas
 
+All write RPC request payloads support:
+
+```json
+{
+  "idempotency_key": "string (optional but recommended for retry-safe writes)"
+}
+```
+
+Behavior:
+- Reusing the same `idempotency_key` with the same write method and same payload returns the original response.
+- Reusing the same key with a different payload returns a conflict error.
+
 `CreateTask` request:
 ```json
 {

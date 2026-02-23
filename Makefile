@@ -1,4 +1,4 @@
-.PHONY: run cli build test fmt vet
+.PHONY: run cli build test fmt vet mm modeloman install-modeloman
 
 run:
 	go run ./cmd/modeloman-server
@@ -17,3 +17,12 @@ fmt:
 
 vet:
 	go vet ./...
+
+mm:
+	go run ./cmd/mm --help
+
+modeloman:
+	go run ./cmd/modeloman --help
+
+install-modeloman:
+	go install ./cmd/modeloman

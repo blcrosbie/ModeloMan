@@ -23,6 +23,17 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
+const (
+	maxRecvMsgSizeBytes  = 1 << 20
+	maxSendMsgSizeBytes  = 2 << 20
+	maxConcurrentStreams = 256
+	authenticatedRPS     = 20
+	authenticatedBurst   = 60
+	unauthenticatedRPS   = 5
+	unauthenticatedBurst = 20
+	rateLimitBucketTTL   = 10 * time.Minute
+)
+
 func main() {
 	cfg := config.Load()
 
@@ -41,6 +52,7 @@ func main() {
 	}
 
 	keyAuth, _ := hubStore.(store.AgentKeyAuthenticator)
+	idempotencyStore, _ := hubStore.(store.IdempotencyStore)
 	if keyAuth != nil && strings.TrimSpace(cfg.BootstrapAgentKey) != "" {
 		keyID, created, err := keyAuth.EnsureAgentKey(cfg.BootstrapAgentID, cfg.BootstrapAgentKey)
 		if err != nil {
@@ -54,6 +66,13 @@ func main() {
 	hubService := service.NewHubService(hubStore, dataSource)
 	handler := grpcx.NewHubHandler(hubService)
 	httpServer := httpx.NewServer(cfg.HTTPAddr, hubService)
+	rateLimiter := grpcx.NewTokenBucketRateLimiter(grpcx.TokenBucketRateLimiterConfig{
+		AuthenticatedPerSecond:   authenticatedRPS,
+		AuthenticatedBurst:       authenticatedBurst,
+		UnauthenticatedPerSecond: unauthenticatedRPS,
+		UnauthenticatedBurst:     unauthenticatedBurst,
+		BucketTTL:                rateLimitBucketTTL,
+	})
 
 	listener, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {
@@ -61,11 +80,16 @@ func main() {
 	}
 
 	server := grpc.NewServer(
+		grpc.MaxRecvMsgSize(maxRecvMsgSizeBytes),
+		grpc.MaxSendMsgSize(maxSendMsgSizeBytes),
+		grpc.MaxConcurrentStreams(maxConcurrentStreams),
 		grpc.ChainUnaryInterceptor(
 			grpcx.RecoveryUnaryInterceptor(),
-			grpcx.AuthUnaryInterceptor(cfg.AuthToken, keyAuth),
+			grpcx.AuthUnaryInterceptor(cfg.AuthToken, cfg.AllowLegacyAuth, keyAuth),
+			grpcx.RateLimitUnaryInterceptor(rateLimiter),
 			grpcx.LoggingUnaryInterceptor(),
 			grpcx.ErrorUnaryInterceptor(),
+			grpcx.IdempotencyUnaryInterceptor(idempotencyStore),
 		),
 	)
 	grpcx.RegisterHubServer(server, handler)
@@ -74,16 +98,25 @@ func main() {
 	healthService.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(server, healthService)
 
-	reflection.Register(server)
+	if cfg.EnableReflection {
+		reflection.Register(server)
+		log.Printf("gRPC reflection is enabled")
+	}
 
 	go func() {
 		log.Printf("ModeloMan gRPC server listening on %s", cfg.GRPCAddr)
 		log.Printf("Store driver=%s source=%s", cfg.StoreDriver, dataSource)
-		if keyAuth == nil && cfg.AuthToken == "" {
-			log.Printf("AUTH_TOKEN and agent key auth are not configured; write methods are currently unauthenticated.")
+		if keyAuth == nil && (!cfg.AllowLegacyAuth || strings.TrimSpace(cfg.AuthToken) == "") {
+			log.Printf("agent key auth is disabled and legacy AUTH_TOKEN auth is not enabled; private/write RPCs will return Unauthenticated.")
 		}
 		if keyAuth != nil {
-			log.Printf("Per-agent API key auth is enabled for write methods.")
+			log.Printf("Per-agent API key auth is enabled for private/write methods.")
+		}
+		if strings.TrimSpace(cfg.AuthToken) != "" && !cfg.AllowLegacyAuth {
+			log.Printf("AUTH_TOKEN is set but ignored because ALLOW_LEGACY_AUTH_TOKEN is false.")
+		}
+		if cfg.AllowLegacyAuth && strings.TrimSpace(cfg.AuthToken) != "" {
+			log.Printf("Legacy shared AUTH_TOKEN fallback is enabled.")
 		}
 		if err := server.Serve(listener); err != nil {
 			log.Fatalf("grpc serve failed: %v", err)
