@@ -6,21 +6,24 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/bcrosbie/modeloman/internal/domain"
 )
 
 type FileStore struct {
-	path  string
-	mu    sync.RWMutex
-	state domain.State
+	path        string
+	mu          sync.RWMutex
+	state       domain.State
+	idempotency map[string]IdempotencyRecord
 }
 
 func NewFileStore(path string) *FileStore {
 	return &FileStore{
-		path:  path,
-		state: domain.EmptyState(),
+		path:        path,
+		state:       domain.EmptyState(),
+		idempotency: map[string]IdempotencyRecord{},
 	}
 }
 
@@ -47,6 +50,9 @@ func (s *FileStore) Load() error {
 	}
 
 	s.state = withDefaults(parsed)
+	if s.idempotency == nil {
+		s.idempotency = map[string]IdempotencyRecord{}
+	}
 	return nil
 }
 
@@ -392,4 +398,78 @@ func (s *FileStore) InsertRunEvent(event domain.RunEvent) error {
 		state.RunEvents = append(state.RunEvents, event)
 		return nil
 	})
+}
+
+func (s *FileStore) ReserveIdempotencyKey(method, idempotencyKey, requestHash string) (IdempotencyRecord, bool, error) {
+	method = normalizeIdempotencyToken(method)
+	idempotencyKey = normalizeIdempotencyToken(idempotencyKey)
+	if method == "" || idempotencyKey == "" || requestHash == "" {
+		return IdempotencyRecord{}, false, domain.InvalidArgument("method, idempotency_key, and request_hash are required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fileIdempotencyRecordKey(method, idempotencyKey)
+	record, exists := s.idempotency[key]
+	if exists {
+		return record, false, nil
+	}
+
+	s.idempotency[key] = IdempotencyRecord{
+		RequestHash: requestHash,
+		Completed:   false,
+	}
+	return IdempotencyRecord{}, true, nil
+}
+
+func (s *FileStore) CompleteIdempotencyKey(method, idempotencyKey, responseJSON string) error {
+	method = normalizeIdempotencyToken(method)
+	idempotencyKey = normalizeIdempotencyToken(idempotencyKey)
+	if method == "" || idempotencyKey == "" {
+		return domain.InvalidArgument("method and idempotency_key are required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fileIdempotencyRecordKey(method, idempotencyKey)
+	record, exists := s.idempotency[key]
+	if !exists {
+		return domain.NotFound("idempotency key not found")
+	}
+	record.ResponseJSON = responseJSON
+	record.Completed = true
+	s.idempotency[key] = record
+	return nil
+}
+
+func (s *FileStore) ReleaseIdempotencyKey(method, idempotencyKey string) error {
+	method = normalizeIdempotencyToken(method)
+	idempotencyKey = normalizeIdempotencyToken(idempotencyKey)
+	if method == "" || idempotencyKey == "" {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := fileIdempotencyRecordKey(method, idempotencyKey)
+	record, exists := s.idempotency[key]
+	if !exists {
+		return nil
+	}
+	if record.Completed {
+		return nil
+	}
+	delete(s.idempotency, key)
+	return nil
+}
+
+func fileIdempotencyRecordKey(method, idempotencyKey string) string {
+	return method + "::" + idempotencyKey
+}
+
+func normalizeIdempotencyToken(value string) string {
+	return strings.TrimSpace(value)
 }

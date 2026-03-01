@@ -39,7 +39,12 @@ func NewHubService(store store.HubStore, dataSource string) *HubService {
 	}
 }
 
+type writeRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+}
+
 type CreateTaskRequest struct {
+	writeRequest
 	Title   string   `json:"title"`
 	Details string   `json:"details"`
 	Status  string   `json:"status"`
@@ -47,6 +52,7 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
+	writeRequest
 	ID      string   `json:"id"`
 	Title   string   `json:"title"`
 	Details string   `json:"details"`
@@ -55,16 +61,19 @@ type UpdateTaskRequest struct {
 }
 
 type DeleteTaskRequest struct {
+	writeRequest
 	ID string `json:"id"`
 }
 
 type CreateNoteRequest struct {
+	writeRequest
 	Title string   `json:"title"`
 	Body  string   `json:"body"`
 	Tags  []string `json:"tags"`
 }
 
 type AppendChangelogRequest struct {
+	writeRequest
 	Category string `json:"category"`
 	Summary  string `json:"summary"`
 	Details  string `json:"details"`
@@ -72,6 +81,7 @@ type AppendChangelogRequest struct {
 }
 
 type RecordBenchmarkRequest struct {
+	writeRequest
 	Workflow     string  `json:"workflow"`
 	ProviderType string  `json:"provider_type"`
 	Provider     string  `json:"provider"`
@@ -85,6 +95,7 @@ type RecordBenchmarkRequest struct {
 }
 
 type StartRunRequest struct {
+	writeRequest
 	TaskID        string `json:"task_id"`
 	Workflow      string `json:"workflow"`
 	AgentID       string `json:"agent_id"`
@@ -94,12 +105,14 @@ type StartRunRequest struct {
 }
 
 type FinishRunRequest struct {
+	writeRequest
 	RunID     string `json:"run_id"`
 	Status    string `json:"status"`
 	LastError string `json:"last_error"`
 }
 
 type RecordPromptAttemptRequest struct {
+	writeRequest
 	RunID         string  `json:"run_id"`
 	AttemptNumber int64   `json:"attempt_number"`
 	Workflow      string  `json:"workflow"`
@@ -120,6 +133,7 @@ type RecordPromptAttemptRequest struct {
 }
 
 type RecordRunEventRequest struct {
+	writeRequest
 	RunID     string `json:"run_id"`
 	EventType string `json:"event_type"`
 	Level     string `json:"level"`
@@ -128,6 +142,7 @@ type RecordRunEventRequest struct {
 }
 
 type SetPolicyRequest struct {
+	writeRequest
 	KillSwitch             *bool    `json:"kill_switch"`
 	KillSwitchReason       *string  `json:"kill_switch_reason"`
 	MaxCostPerRunUSD       *float64 `json:"max_cost_per_run_usd"`
@@ -137,6 +152,7 @@ type SetPolicyRequest struct {
 }
 
 type UpsertPolicyCapRequest struct {
+	writeRequest
 	ID                     string   `json:"id"`
 	Name                   string   `json:"name"`
 	ProviderType           string   `json:"provider_type"`
@@ -154,6 +170,7 @@ type UpsertPolicyCapRequest struct {
 }
 
 type DeletePolicyCapRequest struct {
+	writeRequest
 	ID string `json:"id"`
 }
 

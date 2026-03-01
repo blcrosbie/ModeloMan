@@ -44,10 +44,24 @@ type HubStore interface {
 type AgentPrincipal struct {
 	AgentID string
 	KeyID   string
+	Scopes  []string
 }
 
 // AgentKeyAuthenticator validates write API keys and returns the caller principal.
 type AgentKeyAuthenticator interface {
 	AuthenticateAgentKey(rawKey string) (AgentPrincipal, bool, error)
 	EnsureAgentKey(agentID, rawKey string) (keyID string, created bool, err error)
+}
+
+type IdempotencyRecord struct {
+	RequestHash  string
+	ResponseJSON string
+	Completed    bool
+}
+
+// IdempotencyStore tracks dedupe keys for write RPC replay protection.
+type IdempotencyStore interface {
+	ReserveIdempotencyKey(method, idempotencyKey, requestHash string) (IdempotencyRecord, bool, error)
+	CompleteIdempotencyKey(method, idempotencyKey, responseJSON string) error
+	ReleaseIdempotencyKey(method, idempotencyKey string) error
 }
