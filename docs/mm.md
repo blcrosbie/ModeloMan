@@ -1,6 +1,10 @@
 # `mm` CLI (ModeloMan Workflow Wrapper)
 
-`mm` is a Go-first wrapper around vendor coding CLIs (Codex, Claude Code, Gemini CLI, OpenCode, etc.).
+`mm` is the primary operator-facing tool in ModeloMan.
+
+It wraps vendor coding CLIs (Codex, Claude Code, Gemini CLI, OpenCode, etc.), assembles deterministic repo context, and logs each run to ModeloManHub over gRPC.
+
+`modeloman` is an alias entrypoint for the same wrapper, but `mm` is the canonical binary name for docs, install, and server rollout.
 
 It provides:
 - per-repo context sets
@@ -18,6 +22,8 @@ go build -o modeloman ./cmd/modeloman
 
 or install directly:
 ```bash
+go install ./cmd/mm
+# optional alias binary:
 go install ./cmd/modeloman
 ```
 
@@ -31,7 +37,7 @@ Example:
 ```yaml
 grpc_addr: "grpc.modeloman.com:443"
 grpc_insecure: false
-token_env_var: "MODEL0MAN_TOKEN"
+token_env_var: "MODELOMAN_TOKEN"
 default_backend: "codex"
 redaction: true
 max_context_bytes: 350000
@@ -42,8 +48,8 @@ custom_redaction_regex:
 ```
 
 Token source:
-- set env var from `token_env_var` (default `MODEL0MAN_TOKEN`)
-- fallback env var accepted: `MODELOMAN_TOKEN`
+- set env var from `token_env_var` (default `MODELOMAN_TOKEN`)
+- legacy fallback env var accepted: `MODEL0MAN_TOKEN`
 
 ## Commands
 
@@ -52,8 +58,14 @@ mm add PATH|GLOB ...
 mm drop PATH|GLOB ...
 mm list
 mm clear
-mm run <backend> [--task TYPE] [--skill NAME] [--add PATH|GLOB ...] [--budget TOKENS] [--dry-run] [--pty=true] [--objective "text"]
+mm run <backend> [--task TYPE] [--skill NAME] [--add PATH|GLOB ...] [--budget TOKENS] [--dry-run] [--pty=true] [-p "text" | --prompt-file PATH | < stdin]
 mm tui
+```
+
+Alias:
+
+```bash
+modeloman run codex -p "same wrapper, alternate name"
 ```
 
 Examples:
@@ -61,8 +73,9 @@ Examples:
 ```bash
 mm add internal/**/*.go cmd/mm/*.go
 mm list
-mm run codex --task bugfix --skill grpc-hardening --budget 12000 --objective "Add max gRPC message size limits"
-mm run claude --add README.md --objective "Refactor docs for install flow"
+mm run codex --task bugfix --skill grpc-hardening --budget 12000 -p "Add max gRPC message size limits"
+mm run claude --add README.md --prompt-file RESTART_PROMPT.md
+cat RESTART_PROMPT.md | mm run codex --add cmd/** --add internal/**
 mm tui
 ```
 

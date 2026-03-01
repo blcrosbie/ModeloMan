@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -78,19 +79,24 @@ func runCommand(cfg mmconfig.Config, args []string) error {
 	budget := flags.Int("budget", 0, "optional token budget")
 	dryRun := flags.Bool("dry-run", false, "render and log only")
 	ptyMode := flags.Bool("pty", true, "run backend with PTY for interactive tools")
-	objective := flags.String("objective", "", "objective prompt text")
+	promptText := ""
+	flags.StringVar(&promptText, "p", "", "prompt text")
+	flags.StringVar(&promptText, "prompt", "", "prompt text")
+	flags.StringVar(&promptText, "objective", "", "objective prompt text")
+	promptFile := flags.String("prompt-file", "", "path to prompt file, or - for stdin")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*objective) == "" {
-		*objective = askLine("Objective: ")
+	objective, err := resolvePromptInput(promptText, *promptFile)
+	if err != nil {
+		return err
 	}
 
 	result, err := workflow.Run(context.Background(), cfg, workflow.RunParams{
 		Backend:         backend,
 		TaskType:        strings.TrimSpace(*taskType),
 		Skill:           strings.TrimSpace(*skill),
-		Objective:       strings.TrimSpace(*objective),
+		Objective:       objective,
 		BudgetTokens:    *budget,
 		DryRun:          *dryRun,
 		UsePTY:          *ptyMode,
@@ -114,6 +120,75 @@ func runCommand(cfg mmconfig.Config, args []string) error {
 		_ = workflow.SendFeedback(context.Background(), cfg, result.RunID, rating, notes)
 	}
 	return nil
+}
+
+func resolvePromptInput(promptText, promptFile string) (string, error) {
+	return resolvePromptInputWithReader(promptText, promptFile, os.Stdin, stdinHasData())
+}
+
+func resolvePromptInputWithReader(promptText, promptFile string, stdin io.Reader, hasStdin bool) (string, error) {
+	inline := strings.TrimSpace(promptText)
+	file := strings.TrimSpace(promptFile)
+	if inline != "" && file != "" {
+		return "", fmt.Errorf("prompt text and prompt file are mutually exclusive")
+	}
+	if file != "" {
+		raw, err := readPromptSource(file, stdin)
+		if err != nil {
+			return "", err
+		}
+		prompt := strings.TrimSpace(raw)
+		if prompt == "" {
+			return "", fmt.Errorf("prompt file is empty")
+		}
+		return prompt, nil
+	}
+	if inline != "" {
+		return inline, nil
+	}
+	if hasStdin {
+		raw, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("read prompt from stdin: %w", err)
+		}
+		prompt := strings.TrimSpace(string(raw))
+		if prompt == "" {
+			return "", fmt.Errorf("stdin prompt is empty")
+		}
+		return prompt, nil
+	}
+	return "", fmt.Errorf("prompt is required; use -p, --objective, --prompt-file, or pipe stdin")
+}
+
+func readPromptSource(path string, stdin io.Reader) (string, error) {
+	if path == "-" {
+		raw, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("read prompt from stdin: %w", err)
+		}
+		return string(raw), nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read prompt file %s: %w", path, err)
+	}
+	return string(raw), nil
+}
+
+func stdinHasData() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) == 0
+}
+
+func stdinIsTerminal() bool {
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 func addCommand(args []string) error {
@@ -187,6 +262,9 @@ func askLine(label string) string {
 }
 
 func askFeedback() (int, string) {
+	if !stdinIsTerminal() {
+		return 0, ""
+	}
 	raw := askLine("Rate this run (1-5, Enter to skip): ")
 	if strings.TrimSpace(raw) == "" {
 		return 0, ""
@@ -203,7 +281,7 @@ func usage(commandName, configPath string) {
 	fmt.Printf(`%s - ModeloMan workflow wrapper
 
 Usage:
-  %s run <backend> [--task TYPE] [--skill NAME] [--add PATH|GLOB ...] [--budget TOKENS] [--dry-run] [--pty=true] [--objective "text"]
+  %s run <backend> [--task TYPE] [--skill NAME] [--add PATH|GLOB ...] [--budget TOKENS] [--dry-run] [--pty=true] [-p "text" | --prompt-file PATH | < stdin]
   %s tui
   %s add PATH|GLOB ...
   %s drop PATH|GLOB ...

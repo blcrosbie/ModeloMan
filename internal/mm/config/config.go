@@ -34,7 +34,7 @@ func Default() Config {
 	return Config{
 		GRPCAddr:           "grpc.modeloman.com:443",
 		GRPCInsecure:       false,
-		TokenEnvVar:        "MODEL0MAN_TOKEN",
+		TokenEnvVar:        "MODELOMAN_TOKEN",
 		DefaultBackend:     "codex",
 		RedactionEnabled:   true,
 		MaxContextBytes:    350000,
@@ -104,8 +104,8 @@ func ResolveToken(cfg Config) string {
 			return value
 		}
 	}
-	// Accept MODELOMAN_TOKEN for convenience if config keeps MODEL0MAN_TOKEN default.
-	if value := strings.TrimSpace(os.Getenv("MODELOMAN_TOKEN")); value != "" {
+	// Accept the legacy typo for backward compatibility.
+	if value := strings.TrimSpace(os.Getenv("MODEL0MAN_TOKEN")); value != "" {
 		return value
 	}
 	return ""

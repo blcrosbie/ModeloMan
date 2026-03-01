@@ -1,10 +1,13 @@
 # ModeloMan
 
-Go-first, gRPC-only orchestration control hub for:
-- agent/subagent coordination metadata
-- changelog and operations journaling
-- benchmark telemetry (tokens, cost, latency, provider mix)
-- documentation-driven protobuf contracts
+ModeloMan is a Go-first telemetry and control plane for AI coding runs.
+
+The primary product is `mm`: a local wrapper around coding CLIs like Codex, Claude Code, Gemini CLI, and OpenCode. `mm` assembles repo context, records prompt attempts and run metadata, and sends that session data to the ModeloMan gRPC service for storage and later analysis.
+
+The server in this repo exists to support that workflow:
+- record runs, prompts, events, notes, and benchmarks
+- enforce auth and policy over the logging surface
+- expose gRPC contracts for wrapper clients and future analysis tooling
 
 ## Stack
 - Language: Go (`go1.25+`)
@@ -17,10 +20,10 @@ Go-first, gRPC-only orchestration control hub for:
 - Runtime: single binary (`cmd/modeloman-server`)
 
 ## Project Layout
+- `cmd/mm`: primary workflow wrapper for vendor coding CLIs + ModeloMan telemetry
+- `cmd/modeloman`: alias entrypoint for the same wrapper
 - `cmd/modeloman-server`: production server entrypoint
 - `cmd/modeloman-cli`: local integration CLI (gRPC client)
-- `cmd/mm`: universal workflow wrapper for vendor coding CLIs + ModeloMan telemetry (CLI + Bubble Tea TUI)
-- `cmd/modeloman`: same wrapper entrypoint using `modeloman` command name
 - `internal/service`: business logic, validation, domain workflows
 - `internal/store`: PostgreSQL/Timescale + file-store persistence adapters
 - `internal/transport/grpc`: server registration + interceptors
@@ -30,26 +33,35 @@ Go-first, gRPC-only orchestration control hub for:
 - `CHANGELOG.md`: human-facing change ledger
 
 ## Quick Start
-1. Start server:
+1. Start the server:
 ```bash
 go run ./cmd/modeloman-server
 ```
-2. Run sample calls:
+2. Install the wrapper:
+```bash
+go install ./cmd/mm
+# optional alias binary:
+go install ./cmd/modeloman
+```
+3. Run the wrapper:
+```bash
+mm add internal/**/*.go cmd/mm/*.go
+mm run codex -p "tighten the wrapper telemetry flow"
+cat RESTART_PROMPT.md | mm run codex --add cmd/** --add internal/**
+```
+4. Run sample direct gRPC calls if needed:
 ```bash
 go run ./cmd/modeloman-cli summary
 go run ./cmd/modeloman-cli create-task --title "Set provider routing policy"
 go run ./cmd/modeloman-cli list-tasks
 ```
 
-### Workflow Wrapper (`modeloman`)
-Install command in your shell PATH:
-```bash
-go install ./cmd/modeloman
-```
+### Wrapper CLI
+Use `mm` as the canonical binary.
 
-Then run:
+`modeloman` remains available as an alias for the same wrapper:
 ```bash
-modeloman run codex --task bugfix --objective "fix failing tests"
+modeloman run codex --task bugfix -p "fix failing tests"
 modeloman tui
 ```
 
